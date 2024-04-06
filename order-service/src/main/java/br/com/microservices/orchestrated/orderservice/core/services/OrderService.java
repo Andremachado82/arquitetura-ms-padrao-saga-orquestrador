@@ -34,8 +34,7 @@ public class OrderService {
                 .build();
 
         orderRepository.save(order);
-        Event payload = createPayload(order);
-        sagaProducer.sendEvent(jsonUtil.toJson(payload));
+        sagaProducer.sendEvent(jsonUtil.toJson(createPayload(order)));
         return order;
     }
 
