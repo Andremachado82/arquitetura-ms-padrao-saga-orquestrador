@@ -28,5 +28,5 @@ public class Order {
 
     private double totalAmount;
 
-    private Integer totalItems;
+    private int totalItems;
 }
