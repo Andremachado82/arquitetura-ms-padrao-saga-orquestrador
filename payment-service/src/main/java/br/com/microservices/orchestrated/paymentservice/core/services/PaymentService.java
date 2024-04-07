@@ -25,7 +25,7 @@ public class PaymentService {
 
     private static final String CURRENT_SOURCE = "PAYMENT_SERVICE";
     private static final Double REDUCE_SUM_VALUE = 0.0;
-    private static final Double MIN_AMOUNT_VALUE = 0.0;
+    private static final Double MIN_AMOUNT_VALUE = 0.1;
 
     private final JsonUtil jsonUtil;
     private final KafkaProducer kafkaProducer;
@@ -75,7 +75,7 @@ public class PaymentService {
         var totalItems = totalItems(event);
         var payment = Payment
                 .builder()
-                .orderId(event.getOrderId())
+                .orderId(event.getPayload().getId())
                 .transactionId(event.getTransactionId())
                 .totalAmount(totalAmount)
                 .totalItems(totalItems)
@@ -104,7 +104,9 @@ public class PaymentService {
     }
 
     private void validateAmount(double amount) {
-        if (amount < 0.1) throw new ValidationException("The minimum amount available is ".concat(MIN_AMOUNT_VALUE.toString()));
+        if (amount < MIN_AMOUNT_VALUE) {
+            throw new ValidationException("The minimum amount available is ".concat(MIN_AMOUNT_VALUE.toString()));
+        }
     }
 
     private void changePaymentToSuccess(Payment payment) {
