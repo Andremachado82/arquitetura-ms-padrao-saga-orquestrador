@@ -11,5 +11,5 @@ public class Product {
 
     private String code;
 
-    private double initValue;
+    private double unitValue;
 }

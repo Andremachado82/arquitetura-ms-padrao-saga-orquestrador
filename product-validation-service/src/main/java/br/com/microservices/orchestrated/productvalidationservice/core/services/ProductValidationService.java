@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 
-import static br.com.microservices.orchestrated.productvalidationservice.core.enums.ESagaStatus.SUCCESS;
+import static br.com.microservices.orchestrated.productvalidationservice.core.enums.ESagaStatus.*;
 import static org.springframework.util.ObjectUtils.isEmpty;
 
 @Slf4j
@@ -33,10 +33,11 @@ public class ProductValidationService {
     public void validateExistsProducts(Event event) {
         try {
             checkCurrentValidation(event);
-            createValidation(event);
-            handleSuccess(event);
+            createValidation(event, true);
+            handleSuccess(event, "Products are validated successfully.");
         } catch (Exception ex) {
             log.error("Error trying to validate products: ", ex);
+            handleFailCurrentNotExecuted(event, ex.getMessage());
         }
         kafkaProducer.sendEvent(jsonUtil.toJson(event));
     }
@@ -76,31 +77,55 @@ public class ProductValidationService {
         }
     }
 
-    private void createValidation(Event event) {
+    private void createValidation(Event event, Boolean success) {
         var validation = Validation
                 .builder()
                 .orderId(event.getOrderId())
                 .transactionId(event.getTransactionId())
-                .success(true)
+                .success(success)
                 .build();
         validationRepository.save(validation);
     }
 
-    private void handleSuccess(Event event) {
+    private void handleSuccess(Event event, String message) {
         event.setStatus(SUCCESS);
         event.setSource(CURRENT_SOURCE);
-        addHistory(event);
+        addHistory(event, message);
     }
 
-    private void addHistory(Event event) {
+    private void addHistory(Event event, String message) {
         var history = History
                 .builder()
                 .source(event.getSource())
                 .status(event.getStatus())
-                .message("Products are validated successfully.")
+                .message(message)
                 .createdAt(LocalDateTime.now())
                 .build();
         event.addToHistory(history);
     }
+
+    private void handleFailCurrentNotExecuted(Event event, String message) {
+        event.setStatus(ROLLBACK_PENDING);
+        event.setSource(CURRENT_SOURCE);
+        addHistory(event, "Fail to validate products: ".concat(message));
+    }
+
+    public void rollbackEvent(Event event) {
+        changeValidationToFail(event);
+        event.setStatus(FAIL);
+        event.setSource(CURRENT_SOURCE);
+        addHistory(event, "Rollback executed on product validation");
+        kafkaProducer.sendEvent(jsonUtil.toJson(event));
+    }
+
+    private void changeValidationToFail(Event event) {
+        validationRepository.findByOrderIdAndTransactionId(event.getPayload().getId(), event.getTransactionId())
+                .ifPresentOrElse(validation -> {
+                    validation.setSuccess(false);
+                    validationRepository.save(validation);
+                },
+                () -> createValidation(event, false));
+    }
+
 
 }
