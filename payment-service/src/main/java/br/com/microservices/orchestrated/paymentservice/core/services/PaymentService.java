@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 
+import static br.com.microservices.orchestrated.paymentservice.core.enums.EPaymentStatus.REFUND;
 import static br.com.microservices.orchestrated.paymentservice.core.enums.EPaymentStatus.SUCCESS;
 
 @Slf4j
@@ -41,8 +42,24 @@ public class PaymentService {
             handleSuccess(event);
         } catch (Exception ex) {
             log.error("Error trying to make payment: ", ex);
+            handleFailCurrentNotExecuted(event, ex.getMessage());
         }
         kafkaProducer.sendEvent(jsonUtil.toJson(event));
+    }
+
+    public void realizeRefund(Event event) {
+        changePaymentStatusToRefund(event);
+        event.setStatus(ESagaStatus.FAIL);
+        event.setSource(CURRENT_SOURCE);
+        addHistory(event, "Rollback executed for payment");
+        kafkaProducer.sendEvent(jsonUtil.toJson(event));
+    }
+
+    private void changePaymentStatusToRefund(Event event) {
+        var payment = findByOrderIdAndTransactionId(event);
+        payment.setStatus(REFUND);
+        setEventAmountItems(event, payment);
+        save(payment);
     }
 
     private void checkCurrentValidation(Event event) {
@@ -110,6 +127,12 @@ public class PaymentService {
                 .createdAt(LocalDateTime.now())
                 .build();
         event.addToHistory(history);
+    }
+
+    private void handleFailCurrentNotExecuted(Event event, String message) {
+        event.setStatus(ESagaStatus.ROLLBACK_PENDING);
+        event.setSource(CURRENT_SOURCE);
+        addHistory(event, "Fail to realized payment: ".concat(message));
     }
 
     private void save(Payment payment) {
