@@ -38,6 +38,19 @@ public class InventoryService {
             handleSuccess(event);
         } catch (Exception ex) {
             log.error("Error trying to update inventory: ", ex);
+            handleFailCurrentNotExecuted(event, ex.getMessage());
+        }
+        kafkaProducer.sendEvent(jsonUtil.toJson(event));
+    }
+
+    public void rollbackInventory(Event event) {
+        event.setStatus(ESagaStatus.FAIL);
+        event.setSource(CURRENT_SOURCE);
+        try {
+            returnInventoryToPreviousValues(event);
+            addHistory(event, "Rollback executed for inventory");
+        } catch (Exception ex) {
+            addHistory(event, "Rollback not executed for inventory. ".concat(ex.getMessage()));
         }
         kafkaProducer.sendEvent(jsonUtil.toJson(event));
     }
@@ -54,7 +67,7 @@ public class InventoryService {
     private void createOrderInventory(Event event) {
         event.getPayload().getProducts()
                 .forEach(product -> {
-                    var inventory = findInventoryByProductCode(product.getProducts().getCode());
+                    var inventory = findInventoryByProductCode(product.getProduct().getCode());
                     var orderInventory = createOrderInventory(event, product, inventory);
                     orderInventoryRepository.save(orderInventory);
                 });
@@ -82,14 +95,14 @@ public class InventoryService {
     private void updateInventory(Order payload) {
         payload.getProducts()
                 .forEach(product -> {
-                    var inventory = findInventoryByProductCode(product.getProducts().getCode());
-                    checkinventory(inventory.getAvailable(), product.getQuantity());
+                    var inventory = findInventoryByProductCode(product.getProduct().getCode());
+                    checkInventory(inventory.getAvailable(), product.getQuantity());
                     inventory.setAvailable(inventory.getAvailable() - product.getQuantity());
                     inventoryRepository.save(inventory);
                 });
     }
 
-    private void checkinventory(int available, int orderQuantity) {
+    private void checkInventory(int available, int orderQuantity) {
         if(orderQuantity > available) {
             throw new ValidationException("Product is out of stock");
         }
@@ -110,6 +123,23 @@ public class InventoryService {
                 .createdAt(LocalDateTime.now())
                 .build();
         event.addToHistory(history);
+    }
+
+    private void handleFailCurrentNotExecuted(Event event, String message) {
+        event.setStatus(ESagaStatus.ROLLBACK_PENDING);
+        event.setSource(CURRENT_SOURCE);
+        addHistory(event, "Fail to update inventory: ".concat(message));
+    }
+
+    private void returnInventoryToPreviousValues(Event event) {
+        orderInventoryRepository.findByOrderIdAndTransactionId(event.getPayload().getId(), event.getTransactionId())
+                .forEach(orderInventory -> {
+                    var inventory = orderInventory.getInventory();
+                    inventory.setAvailable(orderInventory.getOldQuantity());
+                    inventoryRepository.save(inventory);
+                    log.info("Restored inventory for order {} from {} to {}",
+                            event.getPayload().getId(), orderInventory.getNewQuantity(), inventory.getAvailable());
+                });
     }
 
 }
