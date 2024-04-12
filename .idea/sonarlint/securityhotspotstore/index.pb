@@ -179,3 +179,9 @@ N
 inventory-service/build.gradle,8/1/81a386639c835a12e946c38574226897c3877383
 J
 order-service/build.gradle,0/6/06205d550c04a72397fe306f01f576092ca63981
+L
+inventory-service/Dockerfile,b/e/be79f32c7484b82d4ace977b26ed0e5c7517dc56
+¨
+xproduct-validation-service/src/main/java/br/com/microservices/orchestrated/productvalidationservice/core/dtos/Order.java,8/d/8d3774d2ca2d26fd72ef3b74d3966425084e202c
+½
+Œproduct-validation-service/src/main/java/br/com/microservices/orchestrated/productvalidationservice/ProductValidationServiceApplication.java,8/2/82f0535076a2cc137e6e9f86bb5295664d288857
